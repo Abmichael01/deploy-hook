@@ -133,8 +133,8 @@ const server = createServer(async (req, res) => {
 
   // Handle GET requests
   if (req.method === 'GET') {
-    // GET /deploy - List available repositories
-    if (path === '/deploy') {
+    // GET /deploy-hook - List available repositories
+    if (path === '/deploy-hook' || path === '/deploy') {
       const availableRepos = Object.keys(REPO_CONFIG).map(key => ({
         name: key,
         path: REPO_CONFIG[key].path,
@@ -146,17 +146,17 @@ const server = createServer(async (req, res) => {
         message: 'Deploy hook is running',
         availableRepos,
         endpoints: {
-          'GET /deploy': 'List available repositories',
-          'GET /deploy/logs': 'Get deployment logs',
-          'POST /deploy?repo=<name>': 'Trigger manual deployment',
-          'POST /deploy': 'GitHub webhook or manual deployment with repo in body'
+          'GET /deploy-hook': 'List available repositories',
+          'GET /deploy-hook/logs': 'Get deployment logs',
+          'POST /deploy-hook?repo=<name>': 'Trigger manual deployment',
+          'POST /deploy-hook': 'GitHub webhook or manual deployment with repo in body'
         }
       });
       return;
     }
     
-    // GET /deploy/logs - Get deployment logs
-    if (path === '/deploy/logs') {
+    // GET /deploy-hook/logs - Get deployment logs
+    if (path === '/deploy-hook/logs' || path === '/deploy/logs') {
       const logsData = getLogs();
       sendJSON(res, 200, {
         status: 'success',
@@ -170,10 +170,10 @@ const server = createServer(async (req, res) => {
       status: 'error',
       message: 'Not found',
       availableEndpoints: [
-        'GET /deploy',
-        'GET /deploy/logs',
-        'POST /deploy?repo=<name>',
-        'POST /deploy'
+        'GET /deploy-hook',
+        'GET /deploy-hook/logs',
+        'POST /deploy-hook?repo=<name>',
+        'POST /deploy-hook'
       ]
     });
     return;
@@ -185,8 +185,8 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  // POST /deploy - Handle deployment
-  if (req.method === 'POST' && path === '/deploy') {
+  // POST /deploy-hook - Handle deployment
+  if (req.method === 'POST' && (path === '/deploy-hook' || path === '/deploy')) {
     let payload = {};
     
     // Try to parse JSON body
@@ -198,9 +198,9 @@ const server = createServer(async (req, res) => {
     }
 
     // Determine repo name from:
-    // 1. Query parameter: ?repo=tajma
-    // 2. Body parameter: { "repo": "tajma" }
-    // 3. GitHub webhook: { "repository": { "name": "Tajma" } }
+    // 1. Query parameter: ?repo=backend
+    // 2. Body parameter: { "repo": "backend" }
+    // 3. GitHub webhook: { "repository": { "name": "backend" } }
     let repoName = query.repo || payload.repo;
     let ref = query.branch || payload.branch || payload.ref;
     let isManual = false;
@@ -210,15 +210,8 @@ const server = createServer(async (req, res) => {
       isManual = true;
       repoName = query.repo || payload.repo;
       
-      // Map repo name to config key (handle both 'tajma' and 'Tajma')
-      const repoMapping = {
-        'tajma': 'tajma',
-        'Tajma': 'tajma',
-        'nigercanton': 'nigercanton',
-        'NigerCanton': 'nigercanton'
-      };
-      
-      const configKey = repoMapping[repoName] || repoName;
+      // Use repo name directly as config key (GitHub repo names match config keys)
+      const configKey = repoName;
       
       if (!REPO_CONFIG[configKey]) {
         log(`Manual deployment requested for unknown repo: ${repoName}`);
@@ -279,13 +272,8 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // Map GitHub repo names to our config keys
-    const repoMapping = {
-      'Tajma': 'tajma',
-      'NigerCanton': 'nigercanton'
-    };
-
-    const configKey = repoMapping[githubRepoName];
+    // Use GitHub repo name directly as config key (names match exactly)
+    const configKey = githubRepoName;
     if (!configKey || !REPO_CONFIG[configKey]) {
       log(`No configuration found for repository: ${githubRepoName}`);
       sendJSON(res, 404, {
@@ -338,10 +326,10 @@ const server = createServer(async (req, res) => {
     status: 'error',
     message: 'Not found',
     availableEndpoints: [
-      'GET /deploy',
-      'GET /deploy/logs',
-      'POST /deploy?repo=<name>',
-      'POST /deploy'
+      'GET /deploy-hook',
+      'GET /deploy-hook/logs',
+      'POST /deploy-hook?repo=<name>',
+      'POST /deploy-hook'
     ]
   });
 });
@@ -350,10 +338,10 @@ const PORT = process.env.PORT || 3005;
 server.listen(PORT, '0.0.0.0', () => {
   log(`Deploy hook server listening on port ${PORT}`);
   log(`Available endpoints:`);
-  log(`  GET  /deploy - List available repositories`);
-  log(`  GET  /deploy/logs - Get deployment logs`);
-  log(`  POST /deploy?repo=<name> - Trigger manual deployment`);
-  log(`  POST /deploy - GitHub webhook or manual deployment`);
+  log(`  GET  /deploy-hook - List available repositories`);
+  log(`  GET  /deploy-hook/logs - Get deployment logs`);
+  log(`  POST /deploy-hook?repo=<name> - Trigger manual deployment`);
+  log(`  POST /deploy-hook - GitHub webhook or manual deployment`);
 });
 
 export default server;

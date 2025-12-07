@@ -1,12 +1,23 @@
 export const REPO_CONFIG = {
-  tajma: {
-    path: "/var/www/Tajma",
+  backend: {
+    path: "/var/www/backend",
     branch: "main",
-    deploy_cmd: "bash -c 'source /home/devuser/.bashrc && export PATH=\"$HOME/.local/bin:$PATH\" && export ENV=production && git pull origin main && cd frontend && pnpm install && pnpm build && cd ../backend && poetry install --no-root && poetry run python manage.py migrate && pm2 restart tajma tajma-backend'"
+    deploy_cmd: "bash -c 'source env/bin/activate && git pull origin main && pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput && pm2 restart backend'"
   },
-  nigercanton: {
-    path: "/var/www/NigerCanton",
-    branch: "master",
-    deploy_cmd: "bash -c 'source /home/devuser/.bashrc && export PATH=\"$HOME/.local/bin:$PATH\" && export DB_PORT=5432 && export ENV=production && git pull origin master && cd frontend && pnpm install && pnpm build && cd ../backend && poetry install && poetry run python manage.py migrate && poetry run python manage.py collectstatic --noinput && pm2 restart nigercanton-frontend nigercanton-backend'"
+  sharptoolz: {
+    path: "/var/www/sharptoolz",
+    branch: "main",
+    deploy_cmd: "git pull origin main && pnpm install && pnpm build"
+  },
+  shippingTracker: {
+    path: "/var/www/shippingTracker",
+    branch: "main",
+    deploy_cmd: "git pull origin main && pnpm install && pnpm build"
+  },
+
+  flightTracker: {
+    path: "/var/www/flightTracker",
+    branch: "main",
+    deploy_cmd: "git pull origin main && pnpm install && pnpm build"
   }
 };

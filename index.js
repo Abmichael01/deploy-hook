@@ -7,6 +7,7 @@ import { REPO_CONFIG } from './repos.config.js';
 
 const logFile = '/var/www/deploy-hook/logs/deploy.log';
 const MAX_LOG_LINES = 5000;
+const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'super_secret_deploy_key_123'; // Default for fallback, should be set in env
 
 // Create logs dir if not exist
 if (!fs.existsSync('/var/www/deploy-hook/logs')) {
@@ -18,10 +19,10 @@ if (!fs.existsSync('/var/www/deploy-hook/logs')) {
 const rotateLogs = () => {
   try {
     if (!fs.existsSync(logFile)) return;
-    
+
     const content = fs.readFileSync(logFile, 'utf8');
     const lines = content.split('\n').filter(line => line.trim());
-    
+
     if (lines.length > MAX_LOG_LINES) {
       // Keep only the last MAX_LOG_LINES
       const keepLines = lines.slice(-MAX_LOG_LINES);
@@ -37,10 +38,10 @@ const log = (msg) => {
   const now = new Date().toISOString();
   const full = `[${now}] ${msg}`;
   console.log(full);
-  
+
   // Rotate before appending if needed
   rotateLogs();
-  
+
   fs.appendFileSync(logFile, full + '\n');
 };
 
@@ -49,10 +50,10 @@ const getLogs = () => {
     if (!fs.existsSync(logFile)) {
       return { logs: [], totalLines: 0 };
     }
-    
+
     const content = fs.readFileSync(logFile, 'utf8');
     const lines = content.split('\n').filter(line => line.trim());
-    
+
     return {
       logs: lines,
       totalLines: lines.length
@@ -140,7 +141,7 @@ const server = createServer(async (req, res) => {
         path: REPO_CONFIG[key].path,
         branch: REPO_CONFIG[key].branch
       }));
-      
+
       sendJSON(res, 200, {
         status: 'success',
         message: 'Deploy hook is running',
@@ -154,7 +155,7 @@ const server = createServer(async (req, res) => {
       });
       return;
     }
-    
+
     // GET /deploy-hook/logs - Get deployment logs
     if (path === '/deploy-hook/logs' || path === '/deploy/logs') {
       const logsData = getLogs();
@@ -164,7 +165,7 @@ const server = createServer(async (req, res) => {
       });
       return;
     }
-    
+
     // 404 for unknown GET routes
     sendJSON(res, 404, {
       status: 'error',
@@ -188,7 +189,7 @@ const server = createServer(async (req, res) => {
   // POST /deploy-hook - Handle deployment
   if (req.method === 'POST' && (path === '/deploy-hook' || path === '/deploy')) {
     let payload = {};
-    
+
     // Try to parse JSON body
     try {
       payload = await json(req);
@@ -203,16 +204,33 @@ const server = createServer(async (req, res) => {
     // 3. GitHub webhook: { "repository": { "name": "backend" } }
     let repoName = query.repo || payload.repo;
     let ref = query.branch || payload.branch || payload.ref;
+    let secret = query.secret || payload.secret;
+
+    // Verify secret
+    const incomingSecret = secret || req.headers['x-hub-signature-256'] || req.headers['x-deployment-token']; // Allow partial flexibility or just simple token
+    // For this simple implementation, we'll check a simple token usage or query param
+    // If using GitHub webhook secret, signature verification is more complex. 
+    // User asked to "accept secret as a param", so we stick to query/body param 'secret'.
+
+    if (secret !== DEPLOY_SECRET) {
+      log(`Invalid secret provided for ${repoName}`);
+      sendJSON(res, 403, {
+        status: 'error',
+        message: 'Forbidden: Invalid secret'
+      });
+      return;
+    }
+
     let isManual = false;
 
     // If repo is provided in query or body, it's a manual deployment
     if (query.repo || payload.repo) {
       isManual = true;
       repoName = query.repo || payload.repo;
-      
+
       // Use repo name directly as config key (GitHub repo names match config keys)
       const configKey = repoName;
-      
+
       if (!REPO_CONFIG[configKey]) {
         log(`Manual deployment requested for unknown repo: ${repoName}`);
         sendJSON(res, 404, {
@@ -224,15 +242,15 @@ const server = createServer(async (req, res) => {
       }
 
       const config = REPO_CONFIG[configKey];
-      
+
       // Use branch from query/body or default to config branch
       const branch = ref || config.branch;
-      
+
       log(`Manual deployment triggered for ${configKey} (branch: ${branch})`);
-      
+
       try {
         const result = await deployRepo(configKey, config);
-        
+
         if (result.success) {
           sendJSON(res, 200, {
             status: 'success',

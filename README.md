@@ -138,15 +138,43 @@ curl -X POST http://localhost:3005/deploy-hook \
 
 ## Logs
 
-Deployment logs are automatically written to `/var/www/deploy-hook/logs/deploy.log`. The log file is automatically rotated when it exceeds 5000 lines, keeping only the most recent entries.
+Deployment logs are automatically written to `/srv/deploy-hook/logs/deploy.log`. The log file is automatically rotated when it exceeds 5000 lines, keeping only the most recent entries.
 
 View logs via:
 - API: `GET /deploy-hook/logs`
-- Direct file access: `/var/www/deploy-hook/logs/deploy.log`
+- Direct file access: `/srv/deploy-hook/logs/deploy.log`
 
 ## Environment Variables
 
 - `PORT`: Server port (default: `3005`)
+- `DEPLOY_SECRET`: Secret key for authorizing deployments.
+
+## Setup Instructions for AI Agents
+
+If you are an AI assistant setting this up on a new server, follow these steps:
+
+1.  **Clone the Repository**:
+    ```bash
+    git clone https://github.com/Abmichael01/deploy-hook.git
+    ```
+2.  **Install Dependencies**:
+    ```bash
+    pnpm install
+    ```
+3.  **Configure Repositories**:
+    Create or edit `repos.config.js` (see [Configuration](#configuration)). **Note**: This file is ignored by Git.
+4.  **Set Deployment Secret**:
+    Generate a secure secret and set it as an environment variable `DEPLOY_SECRET`.
+5.  **Start with PM2**:
+    ```bash
+    pm2 start index.js --name deploy-hook --env DEPLOY_SECRET=YOUR_SECRET
+    pm2 save
+    ```
+6.  **GitHub Webhook URL**:
+    Configure the webhook in GitHub using this format:
+    `https://your-domain.com/deploy-hook?secret=YOUR_SECRET&repo=YOUR_REPO_NAME`
+
+All incoming POST requests **must** include the secret either as a query parameter `?secret=...` or in the JSON body `{"secret": "..."}`.
 
 ## File Structure
 

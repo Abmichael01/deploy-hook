@@ -4,6 +4,7 @@ import { exec } from 'child_process';
 import fs from 'fs';
 import { parse } from 'url';
 import { REPO_CONFIG } from './repos.config.js';
+import crypto from 'crypto';
 
 const logFile = '/var/www/deploy-hook/logs/deploy.log';
 const MAX_LOG_LINES = 5000;
@@ -114,6 +115,19 @@ const sendJSON = (res, statusCode, data) => {
   res.end(JSON.stringify(data));
 };
 
+const verifyGitHubSignature = (payload, signature, secret) => {
+  if (!signature || !secret) return false;
+
+  const hmac = crypto.createHmac('sha256', secret);
+  const digest = 'sha256=' + hmac.update(JSON.stringify(payload)).digest('hex');
+
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));
+  } catch (err) {
+    return false;
+  }
+};
+
 const server = createServer(async (req, res) => {
   // Parse URL to get path and query parameters
   const parsedUrl = parse(req.url || '', true);
@@ -206,17 +220,28 @@ const server = createServer(async (req, res) => {
     let ref = query.branch || payload.branch || payload.ref;
     let secret = query.secret || payload.secret;
 
-    // Verify secret
-    const incomingSecret = secret || req.headers['x-hub-signature-256'] || req.headers['x-deployment-token']; // Allow partial flexibility or just simple token
-    // For this simple implementation, we'll check a simple token usage or query param
-    // If using GitHub webhook secret, signature verification is more complex. 
-    // User asked to "accept secret as a param", so we stick to query/body param 'secret'.
+    // Verify authentication/authorization
+    const githubSignature = req.headers['x-hub-signature-256'];
+    const deploymentToken = req.headers['x-deployment-token'];
 
-    if (secret !== DEPLOY_SECRET) {
-      log(`Invalid secret provided for ${repoName}`);
+    let isAuthenticated = false;
+
+    if (githubSignature) {
+      // 1. Check GitHub Webhook Signature
+      isAuthenticated = verifyGitHubSignature(payload, githubSignature, DEPLOY_SECRET);
+      if (!isAuthenticated) {
+        log(`Invalid GitHub signature for ${repoName || 'unknown repo'}`);
+      }
+    } else if (secret === DEPLOY_SECRET || deploymentToken === DEPLOY_SECRET) {
+      // 2. Check simple secret token (query, body, or header)
+      isAuthenticated = true;
+    }
+
+    if (!isAuthenticated) {
+      log(`Unauthorized access attempt for ${repoName || 'unknown repo'}`);
       sendJSON(res, 403, {
         status: 'error',
-        message: 'Forbidden: Invalid secret'
+        message: 'Forbidden: Invalid secret or signature'
       });
       return;
     }
